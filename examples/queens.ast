@@ -1,0 +1,97 @@
+LetExp(
+  [
+    VarDecl("N", None, Int 8);
+
+    TypeDecl("intArray", TypeArray("int"));
+
+    VarDecl("row", None, Array("intArray", LValue(Ident "N"), Int 0));
+    VarDecl("col", None, Array("intArray", LValue(Ident "N"), Int 0));
+    VarDecl("diag1", None,
+            Array("intArray",
+                  ArithExp(Sub(ArithExp(Add(LValue(Ident "N"), LValue(Ident "N"))),
+                               Int 1)),
+                  Int 0));
+    VarDecl("diag2", None,
+            Array("intArray",
+                  ArithExp(Sub(ArithExp(Add(LValue(Ident "N"), LValue(Ident "N"))),
+                               Int 1)),
+                  Int 0));
+
+    FunDecl("printboard", [],
+            ExpSeq([For("i", Int 0, ArithExp(Sub(LValue(Ident "N"), Int 1)),
+                        ExpSeq("j", Int 0, ArithExp(Sub(LValue(Ident "N"), Int 1)),
+                               [FunCall("print",
+                                        IfThenElse(CmpExp(Eq(LValue(ArrayAccess(LValue(Ident "col"),
+                                                                                LValue(Ident "i"))),
+                                                             LValue(Ident "j"))),
+                                                   String " 0",
+                                                   String " ."));
+                                FunCall("print", String "\n")]));
+                    FunCall("print", String "\n")]));
+
+    FunDecl("try", [("c", "int")],
+            IfThenElse(CmpExp(Eq(LValue(Ident "c"), LValue(Ident "N"))),
+                       FunCall("printboard", []),
+                       For("r", Int 0, ArithExp(Sub(LValue(Ident "N"), Int 1)),
+                           IfThen(BoolExp(
+                             And(CmpExp(LValue(ArrayAccess(LValue(Ident "row"), LValue(Ident "r"))),
+                                        LValue(Ident "r")),
+                                 BoolExp(
+                                   And(CmpExp(LValue(ArrayAccess(LValue(Ident "diag1"),
+                                                                 ArithExp(Add(LValue(Ident "r"),
+                                                                              LValue(Ident "c"))))),
+                                              Int 0),
+                                       CmpExp(LValue(ArrayAccess(LValue(Ident "diag2"),
+                                                                 ArithExp(Sub(ArithExp(Add(LValue(Ident "r"),
+                                                                                           Int 7)),
+                                                                              LValue(Ident "c"))))),
+                                              Int 0))))),
+
+                                  ExpSeq([
+                                    Assign(LValue(ArrayAccess(LValue(Ident "row"),
+                                                              LValue(Ident "r"))),
+                                           Int 1);
+
+                                    Assign(LValue(ArrayAccess(LValue(Ident "diag1"),
+                                                              ArithExp(Add(LValue(Ident "r"),
+                                                                           LValue(Ident "c"))))),
+                                           Int 1);
+
+                                    Assign(LValue(ArrayAccess(LValue(Ident "diag2"),
+                                                              ArithExp(Sub(ArithExp(Add(LValue (Ident "r"),
+                                                                                        Int 7)),
+                                                                           LValue(Ident "c"))))),
+                                           Int 1);
+
+                                    Assign(LValue(ArrayAccess(LValue(Ident "col"), LValue(Ident "c"))),
+                                           LValue(Ident "r"));
+
+                                    FunCall("try", [ArithExp(Add(LValue(Ident "c"), Int 1))]);
+
+                                    Assign(LValue(ArrayAccess(LValue(Ident "row"),
+                                                              LValue(Ident "r"))),
+                                           Int 0);
+
+                                    Assign(LValue(ArrayAccess(LValue(Ident "diag1"),
+                                                              ArithExp(Add(LValue(Ident "r"),
+                                                                           LValue(Ident "c"))))),
+                                           Int 0);
+
+                                    Assign(LValue(ArrayAccess(LValue(Ident "diag2"),
+                                                              ArithExp(Sub(ArithExp(Add(LValue (Ident "r"),
+                                                                                        Int 7)),
+                                                                           LValue(Ident "c"))))),
+                                           Int 0);
+
+                                  ])
+                           )
+                       )
+            )
+    )
+
+  ],
+
+  [
+    FunCall(LValue(Ident "try"), Int 0)
+  ]
+)
