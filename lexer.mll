@@ -54,7 +54,31 @@ let ident = alpha alnum*
 let hex_digit = digit | ['A'-'F' 'a'-'f']
 
 rule lex_tiger = parse
-| "(*" { lex_comment 0 lexbuf }
+| "/*" { lex_comment 0 lexbuf }
+
+| '+'  { T_sym_plus }
+| '*'  { T_sym_times }
+| '-'  { T_sym_minus }
+| '/'  { T_sym_divide }
+| '%'  { T_sym_modulo }
+| '&'  { T_sym_ampersand }
+| '|'  { T_sym_pipe }
+| ':'  { T_sym_colon }
+| ';'  { T_sym_semicolon }
+| ":=" { T_sym_colon_eq }
+| '='  { T_sym_eq }
+| '{'  { T_sym_lbrace }
+| '}'  { T_sym_rbrace }
+| '['  { T_sym_lbracket }
+| ']'  { T_sym_rbracket }
+| '('  { T_sym_lparen }
+| ')'  { T_sym_rparen }
+| '<'  { T_sym_lt }
+| "<=" { T_sym_le }
+| ">=" { T_sym_ge }
+| '>'  { T_sym_gt }
+| '.'  { T_sym_dot }
+| ','  { T_sym_comma }
 
 | digit+ as num { T_lit_int (int_of_string num) }
 | '"' { lex_string (Buffer.create 64) lexbuf }
@@ -71,8 +95,15 @@ rule lex_tiger = parse
     }
 | eof { T_eof }
 
+
+
 and lex_string buf = parse
     | '"' { T_lit_string (Buffer.contents buf) }
+    | ("\\n" | "\\r" | "\\t" | "\\\"" | "\\\\") as esc
+        { let esc_chr = Hashtbl.find escape_tbl esc in
+          Buffer.add_char buf esc_chr;
+          lex_string buf lexbuf
+        }
     | '\n'
         { let tok = T_error (make_src_pos lexbuf, "strings cannot contain newlines") in
           Lexing.new_line lexbuf;
@@ -83,11 +114,6 @@ and lex_string buf = parse
           Lexing.new_line lexbuf;
           tok
         }
-    | ("\\n" | "\\r" | "\\t" | "\\\"" | "\\\\") as esc
-        { let esc_chr = Hashtbl.find escape_tbl esc in
-          Buffer.add_char buf esc_chr;
-          lex_string buf lexbuf
-        }
     | _ as c
         { Buffer.add_char buf c;
           lex_string buf lexbuf
@@ -96,16 +122,15 @@ and lex_string buf = parse
 
 
 and lex_comment depth = parse
-| "(*" { lex_comment (depth + 1) lexbuf }
-| "*)"
-    { if depth = 0 then
-        lex_tiger lexbuf
-      else
-        lex_comment (depth - 1) lexbuf
-    }
-| eof { T_error (make_src_pos lexbuf, "unterminated comment") }
-| _* { lex_comment depth lexbuf }
-
+    | "/*" { lex_comment (depth + 1) lexbuf }
+    | "*/"
+        { if depth = 0 then
+            lex_tiger lexbuf
+          else
+            lex_comment (depth - 1) lexbuf
+        }
+    | eof { T_error (make_src_pos lexbuf, "unterminated comment") }
+    | _ { lex_comment depth lexbuf }
 
 
 

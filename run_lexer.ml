@@ -5,7 +5,7 @@ let rec display_tokens lexbuf =
   if tok = Parser.T_eof then
     print_newline ()
   else begin
-    (* print_string (Utils.string_of_token tok); *)
+    print_string (Token.to_string tok);
     print_char ' ';
     display_tokens lexbuf
   end

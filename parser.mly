@@ -20,23 +20,29 @@
 %token T_kw_var
 %token T_kw_while
 
-%token T_sym_ampersand
-%token T_sym_colon
-%token T_sym_colon_eq
+%token T_sym_plus
+%token T_sym_times
+%token T_sym_minus
 %token T_sym_divide
+%token T_sym_modulo
+%token T_sym_ampersand
+%token T_sym_pipe
+%token T_sym_colon
+%token T_sym_semicolon
+%token T_sym_colon_eq
 %token T_sym_eq
 %token T_sym_lbrace
-%token T_sym_lbracket
-%token T_sym_lparen
-%token T_sym_minus
-%token T_sym_modulo
-%token T_sym_pipe
-%token T_sym_plus
 %token T_sym_rbrace
+%token T_sym_lbracket
 %token T_sym_rbracket
+%token T_sym_lparen
 %token T_sym_rparen
-%token T_sym_semicolon
-%token T_sym_times
+%token T_sym_lt
+%token T_sym_le
+%token T_sym_ge
+%token T_sym_gt
+%token T_sym_dot
+%token T_sym_comma
 
 %token <int> T_lit_int
 %token <string> T_lit_string
