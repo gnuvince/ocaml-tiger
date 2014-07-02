@@ -18,6 +18,7 @@
     List.iter (fun (keyword, tok) -> Hashtbl.add keyword_tbl keyword tok)
       [
         ("array"    , T_kw_array);
+        ("break"    , T_kw_break);
         ("do"       , T_kw_do);
         ("else"     , T_kw_else);
         ("end"      , T_kw_end);
@@ -25,11 +26,9 @@
         ("function" , T_kw_function);
         ("if"       , T_kw_if);
         ("in"       , T_kw_in);
-        ("int"      , T_kw_int);
         ("let"      , T_kw_let);
         ("nil"      , T_kw_nil);
         ("of"       , T_kw_of);
-        ("string"   , T_kw_string);
         ("then"     , T_kw_then);
         ("to"       , T_kw_to);
         ("type"     , T_kw_type);
@@ -66,7 +65,6 @@ rule lex_tiger = parse
 | ':'  { T_sym_colon }
 | ';'  { T_sym_semicolon }
 | ":=" { T_sym_colon_eq }
-| '='  { T_sym_eq }
 | '{'  { T_sym_lbrace }
 | '}'  { T_sym_rbrace }
 | '['  { T_sym_lbracket }
@@ -75,6 +73,8 @@ rule lex_tiger = parse
 | ')'  { T_sym_rparen }
 | '<'  { T_sym_lt }
 | "<=" { T_sym_le }
+| '='  { T_sym_eq }
+| "<>" { T_sym_neq }
 | ">=" { T_sym_ge }
 | '>'  { T_sym_gt }
 | '.'  { T_sym_dot }
