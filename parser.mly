@@ -1,5 +1,20 @@
 %{
+
 open Ast
+
+type var_tail =
+  | TailSubscript of expr
+  | TailField of sym
+
+let rec make_var var pos lst =
+  match lst with
+  | [] -> var
+  | h::t ->
+     begin
+       match h with
+       | TailSubscript expr -> make_var (SubscriptVar (var, expr, pos)) pos t
+       | TailField sym -> make_var (FieldVar (var, sym, pos)) pos t
+     end
 
 let make_src_pos () =
   let start = Parsing.symbol_start_pos ()
@@ -64,9 +79,10 @@ let make_src_pos () =
 %token <string> T_lit_string
 %token <string> T_ident
 
+%nonassoc T_sym_colon_eq
+%left T_sym_ampersand T_sym_pipe
 %nonassoc T_sym_lt T_sym_le T_sym_gt T_sym_ge
 %nonassoc T_sym_eq T_sym_neq
-%left T_sym_ampersand T_sym_pipe
 %left T_sym_plus T_sym_minus
 %left T_sym_times T_sym_divide T_sym_modulo
 
@@ -126,10 +142,11 @@ expr:
 | typ=T_ident T_sym_lbracket size=expr T_sym_rbracket T_kw_of init=expr
     { ArrayExpr { array_type=typ; array_size=size; array_init=init; array_pos=make_src_pos () } }
 
-| T_kw_let decls=nonempty_list(decl) T_kw_in body=expr T_kw_end
+| T_kw_let decls=nonempty_list(decl) T_kw_in body=separated_list(T_sym_semicolon, expr) T_kw_end
     { LetExpr { let_decls=decls; let_body=body; let_pos=make_src_pos () } }
 
 (* Operators *)
+| T_sym_minus e=expr              { OpExpr { op_left=IntExpr 0; op_right=e; op_op=OpMinus; op_pos=make_src_pos () } }
 | e1=expr T_sym_plus      e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpPlus  ; op_pos=make_src_pos () } }
 | e1=expr T_sym_minus     e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpMinus ; op_pos=make_src_pos () } }
 | e1=expr T_sym_times     e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpTimes ; op_pos=make_src_pos () } }
@@ -145,12 +162,17 @@ expr:
 | e1=expr T_sym_ampersand e2=expr { IfExpr { if_test=e1; if_then=e2; if_else=Some (IntExpr 0); if_pos=make_src_pos () } }
 
 var:
-| v=var T_sym_dot f=T_ident
-    { FieldVar (v, f, make_src_pos ()) }
-| v=var T_sym_lbracket e=expr T_sym_rbracket
-    { SubscriptVar (v, e, make_src_pos ()) }
-| id=T_ident
-    { SimpleVar (id, make_src_pos ()) }
+| id=T_ident rest=var_tail
+    { let pos = make_src_pos () in
+      make_var (SimpleVar (id, pos)) pos rest }
+
+var_tail:
+| T_sym_dot id=T_ident rest=var_tail
+    { TailField(id) :: rest }
+| T_sym_lbracket expr=expr T_sym_rbracket rest=var_tail
+    { TailSubscript(expr) :: rest }
+| (* empty *)
+    { [] }
 
 record_field:
 | k=T_ident T_sym_eq v=expr

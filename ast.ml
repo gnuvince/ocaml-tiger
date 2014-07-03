@@ -104,7 +104,7 @@ and for_expr = { for_var: sym;
                  for_pos: Src_pos.t }
 
 and let_expr = { let_decls: decl list;
-                 let_body: expr;
+                 let_body: expr list;
                  let_pos: Src_pos.t }
 
 and array_expr = { array_type: sym;
@@ -137,7 +137,7 @@ let rec expr_to_string = function
        | Some expr -> " else " ^ expr_to_string expr
        | None      -> ""
        ) in
-     sprintf "if %s then %s%s" (expr_to_string if_test) (expr_to_string if_then) else_str
+     sprintf "if (%s) then %s%s" (expr_to_string if_test) (expr_to_string if_then) else_str
   | WhileExpr { while_test; while_body; while_pos=_ } ->
      sprintf "while %s do %s" (expr_to_string while_test) (expr_to_string while_body)
   | ForExpr { for_var; for_lo; for_hi; for_body; _ } ->
@@ -150,7 +150,8 @@ let rec expr_to_string = function
   | LetExpr { let_decls; let_body; let_pos=_ } ->
      sprintf "let %s in %s end"
        (String.concat " " (List.map let_decl_to_string let_decls))
-       (expr_to_string let_body)
+       (String.concat "; " (List.map expr_to_string let_body))
+
   | ArrayExpr { array_type; array_size; array_init; array_pos=_ } ->
      sprintf "%s [%s] of %s"
        array_type
