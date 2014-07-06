@@ -1,6 +1,8 @@
 {
   open Parser
 
+  exception LexerError of (Src_pos.t * string)
+
   let make_src_pos lexbuf =
     let start = Lexing.lexeme_start_p lexbuf
     and stop = Lexing.lexeme_end_p lexbuf in
@@ -94,6 +96,10 @@ rule lex_tiger = parse
       lex_tiger lexbuf
     }
 | eof { T_eof }
+| _ as c
+    { raise (LexerError (make_src_pos lexbuf,
+                         Printf.sprintf "illegal character '%c'" c))
+    }
 
 
 
@@ -105,15 +111,9 @@ and lex_string buf = parse
           lex_string buf lexbuf
         }
     | '\n'
-        { let tok = T_error (make_src_pos lexbuf, "strings cannot contain newlines") in
-          Lexing.new_line lexbuf;
-          tok
-        }
+        { raise (LexerError (make_src_pos lexbuf, "strings cannot contain newlines")) }
     | eof
-        { let tok = T_error (make_src_pos lexbuf, "unfinished string") in
-          Lexing.new_line lexbuf;
-          tok
-        }
+        { raise (LexerError (make_src_pos lexbuf, "unfinished string")) }
     | _ as c
         { Buffer.add_char buf c;
           lex_string buf lexbuf
@@ -129,7 +129,8 @@ and lex_comment depth = parse
           else
             lex_comment (depth - 1) lexbuf
         }
-    | eof { T_error (make_src_pos lexbuf, "unterminated comment") }
+    | eof
+        { raise (LexerError (make_src_pos lexbuf, "unterminated comment")) }
     | _ { lex_comment depth lexbuf }
 
 

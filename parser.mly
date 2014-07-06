@@ -29,7 +29,6 @@ let make_src_pos () =
 %}
 
 
-%token <Src_pos.t * string> T_error
 %token T_eof
 
 %token T_kw_array

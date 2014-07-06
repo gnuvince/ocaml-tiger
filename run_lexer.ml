@@ -1,14 +1,17 @@
 open Lexing
 
 let rec display_tokens lexbuf =
-  let tok = Lexer.lex_tiger lexbuf in
-  if tok = Parser.T_eof then
-    print_newline ()
-  else begin
-    print_string (Token.to_string tok);
-    print_char ' ';
-    display_tokens lexbuf
-  end
+  try
+    let tok = Lexer.lex_tiger lexbuf in
+    if tok = Parser.T_eof then
+      print_newline ()
+    else begin
+      print_string (Token.to_string tok);
+      print_char ' ';
+      display_tokens lexbuf
+    end
+  with (Lexer.LexerError (pos, reason)) ->
+      Printf.eprintf "error: %s: %s\n" (Src_pos.to_string pos) reason
 
 
 let () =

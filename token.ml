@@ -1,7 +1,6 @@
 open Parser
 
 let rec to_string = function
-  | T_error (pos, msg) -> Printf.sprintf "ERROR[%s %s]" (Src_pos.to_string pos) msg
   | T_eof              -> "T_eof"
   | T_kw_array         -> "array"
   | T_kw_break         -> "break"
