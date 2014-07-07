@@ -4,7 +4,7 @@ open Ast
 
 type var_tail =
   | TailSubscript of expr
-  | TailField of sym
+  | TailField of Sym.t
 
 let rec make_var var pos lst =
   match lst with
@@ -105,13 +105,13 @@ expr:
     { (StringExpr s, make_src_pos $startpos $endpos) }
 
 | func=T_ident T_sym_lparen args=separated_list(T_sym_comma, expr) T_sym_rparen
-    { (CallExpr { call_func=func; call_args=args }, make_src_pos $startpos $endpos) }
+    { (CallExpr { call_func=Sym.from_string func; call_args=args }, make_src_pos $startpos $endpos) }
 
 | T_kw_break
     { (BreakExpr, make_src_pos $startpos $endpos) }
 
 | typ=T_ident T_sym_lbrace fields=separated_list(T_sym_comma, record_field) T_sym_rbrace
-    { (RecordExpr { record_type=typ; record_fields=fields }, make_src_pos $startpos $endpos) }
+    { (RecordExpr { record_type=Sym.from_string typ; record_fields=fields }, make_src_pos $startpos $endpos) }
 
 | T_sym_lparen exprs=separated_list(T_sym_semicolon, expr) T_sym_rparen
     { (SeqExpr exprs, make_src_pos $startpos $endpos) }
@@ -129,7 +129,7 @@ expr:
     { (WhileExpr { while_test=e1; while_body=e2 }, make_src_pos $startpos $endpos) }
 
 | T_kw_for var=T_ident T_sym_colon_eq lo=expr T_kw_to hi=expr T_kw_do body=expr
-    { (ForExpr { for_var=var;
+    { (ForExpr { for_var=Sym.from_string var;
                  for_escape=ref true;
                  for_lo=lo; for_hi=hi;
                  for_body=body },
@@ -137,7 +137,10 @@ expr:
     }
 
 | typ=T_ident T_sym_lbracket size=expr T_sym_rbracket T_kw_of init=expr
-    { (ArrayExpr { array_type=typ; array_size=size; array_init=init }, make_src_pos $startpos $endpos) }
+    { (ArrayExpr { array_type=Sym.from_string typ;
+                   array_size=size;
+                   array_init=init },
+       make_src_pos $startpos $endpos) }
 
 | T_kw_let decls=nonempty_list(decl) T_kw_in body=separated_list(T_sym_semicolon, expr) T_kw_end
     { (LetExpr { let_decls=decls; let_body=body }, make_src_pos $startpos $endpos) }
@@ -167,11 +170,11 @@ expr:
 var:
 | id=T_ident rest=var_tail
     { let pos = make_src_pos $startpos $endpos in
-      make_var (SimpleVar (id, pos)) pos rest }
+      make_var (SimpleVar (Sym.from_string id, pos)) pos rest }
 
 var_tail:
 | T_sym_dot id=T_ident rest=var_tail
-    { TailField(id) :: rest }
+    { TailField(Sym.from_string id) :: rest }
 | T_sym_lbracket expr=expr T_sym_rbracket rest=var_tail
     { TailSubscript(expr) :: rest }
 | (* empty *)
@@ -179,7 +182,7 @@ var_tail:
 
 record_field:
 | k=T_ident T_sym_eq v=expr
-    { (k, v, make_src_pos $startpos $endpos) }
+    { (Sym.from_string k, v, make_src_pos $startpos $endpos) }
 
 decl:
 | v=var_decl { VarDecl v }
@@ -188,29 +191,50 @@ decl:
 
 var_decl:
 | T_kw_var var=T_ident T_sym_colon typ=T_ident T_sym_colon_eq expr=expr
-    { { var_name=var; var_type=Some typ; var_expr=expr; var_escape=ref true; var_pos=make_src_pos $startpos $endpos } }
+    { { var_name=Sym.from_string var;
+        var_type=Some (Sym.from_string typ);
+        var_expr=expr;
+        var_escape=ref true;
+        var_pos=make_src_pos $startpos $endpos } }
 | T_kw_var var=T_ident T_sym_colon_eq expr=expr
-    { { var_name=var; var_type=None; var_expr=expr; var_escape=ref true; var_pos=make_src_pos $startpos $endpos } }
+    { { var_name=Sym.from_string var;
+        var_type=None;
+        var_expr=expr;
+        var_escape=ref true;
+        var_pos=make_src_pos $startpos $endpos } }
 
 type_decl:
 | T_kw_type name=T_ident T_sym_eq typ=typ
-    { { type_name=name; type_type=typ; type_pos=make_src_pos $startpos $endpos } }
+    { { type_name=Sym.from_string name;
+        type_type=typ;
+        type_pos=make_src_pos $startpos $endpos } }
 
 fun_decl:
 | T_kw_function name=T_ident T_sym_lparen params=separated_list(T_sym_comma, field) T_sym_rparen T_sym_colon typ=T_ident
     T_sym_eq body=expr
-    { { fun_name=name; fun_params=params; fun_body=body; fun_type=Some typ; fun_pos=make_src_pos $startpos $endpos } }
+    { { fun_name=Sym.from_string name;
+        fun_params=params;
+        fun_body=body;
+        fun_type=Some (Sym.from_string typ);
+        fun_pos=make_src_pos $startpos $endpos } }
 | T_kw_function name=T_ident T_sym_lparen params=separated_list(T_sym_comma, field) T_sym_rparen T_sym_eq body=expr
-    { { fun_name=name; fun_params=params; fun_body=body; fun_type=None; fun_pos=make_src_pos $startpos $endpos } }
+    { { fun_name=Sym.from_string name;
+        fun_params=params;
+        fun_body=body;
+        fun_type=None;
+        fun_pos=make_src_pos $startpos $endpos } }
 
 typ:
 | name=T_ident
-    { NameType (name, make_src_pos $startpos $endpos) }
+    { NameType (Sym.from_string name, make_src_pos $startpos $endpos) }
 | T_sym_lbrace fields=separated_list(T_sym_comma, field) T_sym_rbrace
     { RecordType fields }
 | T_kw_array T_kw_of name=T_ident
-    { ArrayType (name, make_src_pos $startpos $endpos) }
+    { ArrayType (Sym.from_string name, make_src_pos $startpos $endpos) }
 
 field:
 | name=T_ident T_sym_colon typ=T_ident
-    { { field_name=name; field_type=typ; field_escape=ref true; field_pos=make_src_pos $startpos $endpos } }
+    { { field_name=Sym.from_string name;
+        field_type=Sym.from_string typ;
+        field_escape=ref true;
+        field_pos=make_src_pos $startpos $endpos } }

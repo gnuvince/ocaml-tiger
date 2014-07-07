@@ -1,7 +1,5 @@
 open Printf
 
-type sym = string
-
 type escape = bool ref
 
 type decl =
@@ -28,33 +26,33 @@ and expr_ =
   | ArrayExpr of array_expr
 
 and var =
-  | SimpleVar of sym * Src_pos.t
-  | FieldVar of var * sym * Src_pos.t
+  | SimpleVar of Sym.t * Src_pos.t
+  | FieldVar of var * Sym.t * Src_pos.t
   | SubscriptVar of var * expr * Src_pos.t
 
 and typ =
-  | NameType of sym * Src_pos.t
+  | NameType of Sym.t * Src_pos.t
   | RecordType of field list
-  | ArrayType of sym * Src_pos.t
+  | ArrayType of Sym.t * Src_pos.t
 
-and field = { field_name: sym;
-              field_type: sym;
+and field = { field_name: Sym.t;
+              field_type: Sym.t;
               field_escape: escape;
               field_pos: Src_pos.t }
 
-and var_decl = { var_name: sym;
-                 var_type: sym option;
+and var_decl = { var_name: Sym.t;
+                 var_type: Sym.t option;
                  var_expr: expr;
                  var_escape: escape;
                  var_pos: Src_pos.t }
 
-and fun_decl = { fun_name: sym;
+and fun_decl = { fun_name: Sym.t;
                  fun_params: field list;
                  fun_body: expr;
-                 fun_type: sym option;
+                 fun_type: Sym.t option;
                  fun_pos: Src_pos.t }
 
-and type_decl = { type_name: sym;
+and type_decl = { type_name: Sym.t;
                   type_type: typ;
                   type_pos: Src_pos.t }
 
@@ -71,7 +69,7 @@ and op =
   | OpGt
   | OpGe
 
-and call_expr = { call_func: sym;
+and call_expr = { call_func: Sym.t;
                   call_args: expr list }
 
 
@@ -79,8 +77,8 @@ and op_expr = { op_left: expr;
                 op_right: expr;
                 op_op: op }
 
-and record_expr = { record_type: sym;
-                    record_fields: (sym * expr * Src_pos.t) list }
+and record_expr = { record_type: Sym.t;
+                    record_fields: (Sym.t * expr * Src_pos.t) list }
 
 and assign_expr = { assign_lhs: var;
                     assign_rhs: expr }
@@ -92,7 +90,7 @@ and if_expr = { if_test: expr;
 and while_expr = { while_test: expr;
                    while_body: expr }
 
-and for_expr = { for_var: sym;
+and for_expr = { for_var: Sym.t;
                  for_escape: escape;
                  for_lo: expr;
                  for_hi: expr;
@@ -101,7 +99,7 @@ and for_expr = { for_var: sym;
 and let_expr = { let_decls: decl list;
                  let_body: expr list }
 
-and array_expr = { array_type: sym;
+and array_expr = { array_type: Sym.t;
                    array_size: expr;
                    array_init: expr }
 
@@ -123,15 +121,17 @@ and expr__to_string = function
      sprintf "\"%s\"" (String.escaped s)
 
   | CallExpr { call_func; call_args } ->
-     sprintf "%s(%s)" call_func (String.concat ", " (List.map expr_to_string call_args))
+     sprintf "%s(%s)"
+       (Sym.to_string call_func)
+       (String.concat ", " (List.map expr_to_string call_args))
 
   | OpExpr { op_left; op_right; op_op } ->
      sprintf "(%s %s %s)" (expr_to_string op_left) (op_to_string op_op) (expr_to_string op_right)
 
   | RecordExpr { record_type; record_fields } ->
      sprintf "%s{ %s }"
-       record_type
-       (String.concat ", " (List.map (fun (k, v, _) -> sprintf "%s=%s" k (expr_to_string v)) record_fields))
+       (Sym.to_string record_type)
+       (String.concat ", " (List.map (fun (k, v, _) -> sprintf "%s=%s" (Sym.to_string k) (expr_to_string v)) record_fields))
 
   | SeqExpr exprs ->
      sprintf "(%s)" (String.concat "; " (List.map expr_to_string exprs))
@@ -152,7 +152,7 @@ and expr__to_string = function
 
   | ForExpr { for_var; for_lo; for_hi; for_body; _ } ->
      sprintf "for %s := %s to %s do %s"
-       for_var
+       (Sym.to_string for_var)
        (expr_to_string for_lo)
        (expr_to_string for_hi)
        (expr_to_string for_body)
@@ -167,14 +167,14 @@ and expr__to_string = function
 
   | ArrayExpr { array_type; array_size; array_init } ->
      sprintf "%s [%s] of %s"
-       array_type
+       (Sym.to_string array_type)
        (expr_to_string array_size)
        (expr_to_string array_init)
 
 
 and var_to_string = function
-  | SimpleVar (sym, _) -> sym
-  | FieldVar (var, field, _) -> sprintf "%s.%s" (var_to_string var) field
+  | SimpleVar (sym, _) -> Sym.to_string sym
+  | FieldVar (var, field, _) -> sprintf "%s.%s" (var_to_string var) (Sym.to_string field)
   | SubscriptVar (var, expr, _) -> sprintf "%s[%s]" (var_to_string var) (expr_to_string expr)
 
 and let_decl_to_string = function
@@ -187,27 +187,35 @@ and let_decl_to_string = function
 
 and var_decl_to_string { var_name; var_type; var_expr; _ } =
   sprintf "var %s%s := %s"
-    var_name
-    (match var_type with Some t -> ": " ^ t | None -> "")
+    (Sym.to_string var_name)
+    (match var_type with
+    | Some t -> ": " ^ Sym.to_string t
+    | None -> "")
     (expr_to_string var_expr)
 
 and fun_decl_to_string { fun_name; fun_params; fun_body; fun_type; fun_pos=_ } =
   sprintf "function %s(%s)%s = %s"
-    fun_name
+    (Sym.to_string fun_name)
     (String.concat ", " (List.map field_to_string fun_params))
-    (match fun_type with Some t -> ": " ^ t | None -> "")
+    (match fun_type with
+    | Some t -> ": " ^ Sym.to_string t
+    | None -> "")
     (expr_to_string fun_body)
 
 and type_decl_to_string { type_name; type_type; type_pos=_ } =
-  sprintf "type %s = %s" type_name (type_to_string type_type)
+  sprintf "type %s = %s"
+    (Sym.to_string type_name)
+    (type_to_string type_type)
 
 and field_to_string { field_name; field_type; _ } =
-  sprintf "%s: %s" field_name field_type
+  sprintf "%s: %s"
+    (Sym.to_string field_name)
+    (Sym.to_string field_type)
 
 and type_to_string = function
-  | NameType (name, _) -> name
+  | NameType (name, _) -> Sym.to_string name
   | RecordType fields -> sprintf "{ %s }" (String.concat ", " (List.map field_to_string fields))
-  | ArrayType (base_type, _) -> sprintf "array of %s" base_type
+  | ArrayType (base_type, _) -> sprintf "array of %s" (Sym.to_string base_type)
 
 and op_to_string = function
   | OpPlus   -> "+"
