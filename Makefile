@@ -1,4 +1,4 @@
-SUFFIX = native
+SUFFIX = byte
 
 all:
 	ocamlbuild -use-menhir run_lexer.$(SUFFIX)

@@ -9,11 +9,12 @@ type decl =
   | FunDecl of fun_decl list
   | TypeDecl of type_decl list
 
-and expr =
+and expr = expr_ * Src_pos.t
+and expr_ =
   | VarExpr of var
   | NilExpr
   | IntExpr of int
-  | StringExpr of string * Src_pos.t
+  | StringExpr of string
   | CallExpr of call_expr
   | OpExpr of op_expr
   | RecordExpr of record_expr
@@ -22,7 +23,7 @@ and expr =
   | IfExpr of if_expr
   | WhileExpr of while_expr
   | ForExpr of for_expr
-  | BreakExpr of Src_pos.t
+  | BreakExpr
   | LetExpr of let_expr
   | ArrayExpr of array_expr
 
@@ -71,92 +72,105 @@ and op =
   | OpGe
 
 and call_expr = { call_func: sym;
-                  call_args: expr list;
-                  call_pos: Src_pos.t }
+                  call_args: expr list }
+
 
 and op_expr = { op_left: expr;
                 op_right: expr;
-                op_op: op;
-                op_pos: Src_pos.t }
+                op_op: op }
 
 and record_expr = { record_type: sym;
-                    record_fields: (sym * expr * Src_pos.t) list;
-                    record_pos: Src_pos.t }
+                    record_fields: (sym * expr * Src_pos.t) list }
 
 and assign_expr = { assign_lhs: var;
-                    assign_rhs: expr;
-                    assign_pos: Src_pos.t }
+                    assign_rhs: expr }
 
 and if_expr = { if_test: expr;
                 if_then: expr;
-                if_else: expr option;
-                if_pos: Src_pos.t }
+                if_else: expr option }
 
 and while_expr = { while_test: expr;
-                   while_body: expr;
-                   while_pos: Src_pos.t }
+                   while_body: expr }
 
 and for_expr = { for_var: sym;
                  for_escape: escape;
                  for_lo: expr;
                  for_hi: expr;
-                 for_body: expr;
-                 for_pos: Src_pos.t }
+                 for_body: expr }
 
 and let_expr = { let_decls: decl list;
-                 let_body: expr list;
-                 let_pos: Src_pos.t }
+                 let_body: expr list }
 
 and array_expr = { array_type: sym;
                    array_size: expr;
-                   array_init: expr;
-                   array_pos: Src_pos.t }
+                   array_init: expr }
 
 
 
-let rec expr_to_string = function
-  | VarExpr v -> var_to_string v
-  | NilExpr -> "nil"
-  | IntExpr n -> string_of_int n
-  | StringExpr (s, _) -> sprintf "\"%s\"" (String.escaped s)
-  | CallExpr { call_func; call_args; call_pos=_ } ->
+let rec expr_to_string (expr_, _) = expr__to_string expr_
+
+and expr__to_string = function
+  | VarExpr v ->
+     var_to_string v
+
+  | NilExpr ->
+     "nil"
+
+  | IntExpr n ->
+     string_of_int n
+
+  | StringExpr s ->
+     sprintf "\"%s\"" (String.escaped s)
+
+  | CallExpr { call_func; call_args } ->
      sprintf "%s(%s)" call_func (String.concat ", " (List.map expr_to_string call_args))
-  | OpExpr { op_left; op_right; op_op; op_pos=_ } ->
+
+  | OpExpr { op_left; op_right; op_op } ->
      sprintf "(%s %s %s)" (expr_to_string op_left) (op_to_string op_op) (expr_to_string op_right)
-  | RecordExpr { record_type; record_fields; record_pos=_ } ->
+
+  | RecordExpr { record_type; record_fields } ->
      sprintf "%s{ %s }"
        record_type
        (String.concat ", " (List.map (fun (k, v, _) -> sprintf "%s=%s" k (expr_to_string v)) record_fields))
+
   | SeqExpr exprs ->
      sprintf "(%s)" (String.concat "; " (List.map expr_to_string exprs))
-  | AssignExpr { assign_lhs; assign_rhs; assign_pos=_ } ->
+
+  | AssignExpr { assign_lhs; assign_rhs } ->
      sprintf "%s := %s" (var_to_string assign_lhs) (expr_to_string assign_rhs)
-  | IfExpr { if_test; if_then; if_else; if_pos } ->
+
+  | IfExpr { if_test; if_then; if_else } ->
      let else_str =
        (match if_else with
        | Some expr -> " else " ^ expr_to_string expr
        | None      -> ""
        ) in
      sprintf "if (%s) then %s%s" (expr_to_string if_test) (expr_to_string if_then) else_str
-  | WhileExpr { while_test; while_body; while_pos=_ } ->
+
+  | WhileExpr { while_test; while_body } ->
      sprintf "while %s do %s" (expr_to_string while_test) (expr_to_string while_body)
+
   | ForExpr { for_var; for_lo; for_hi; for_body; _ } ->
      sprintf "for %s := %s to %s do %s"
        for_var
        (expr_to_string for_lo)
        (expr_to_string for_hi)
        (expr_to_string for_body)
-  | BreakExpr _ -> "break"
-  | LetExpr { let_decls; let_body; let_pos=_ } ->
+
+  | BreakExpr ->
+     "break"
+
+  | LetExpr { let_decls; let_body } ->
      sprintf "let %s in %s end"
        (String.concat " " (List.map let_decl_to_string let_decls))
        (String.concat "; " (List.map expr_to_string let_body))
 
-  | ArrayExpr { array_type; array_size; array_init; array_pos=_ } ->
+  | ArrayExpr { array_type; array_size; array_init } ->
      sprintf "%s [%s] of %s"
        array_type
        (expr_to_string array_size)
        (expr_to_string array_init)
+
 
 and var_to_string = function
   | SimpleVar (sym, _) -> sym

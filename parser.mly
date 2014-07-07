@@ -93,70 +93,76 @@ program:
 
 expr:
 | v=var
-    { VarExpr v }
+    { (VarExpr v, make_src_pos $startpos $endpos) }
 
 | T_kw_nil
-    { NilExpr }
+    { (NilExpr, make_src_pos $startpos $endpos) }
 
 | n=T_lit_int
-    { IntExpr n }
+    { (IntExpr n, make_src_pos $startpos $endpos) }
 
 | s=T_lit_string
-    { StringExpr (s, make_src_pos $startpos $endpos) }
+    { (StringExpr s, make_src_pos $startpos $endpos) }
 
 | func=T_ident T_sym_lparen args=separated_list(T_sym_comma, expr) T_sym_rparen
-    { CallExpr { call_func=func; call_args=args; call_pos=make_src_pos $startpos $endpos } }
+    { (CallExpr { call_func=func; call_args=args }, make_src_pos $startpos $endpos) }
 
 | T_kw_break
-    { BreakExpr (make_src_pos $startpos $endpos) }
+    { (BreakExpr, make_src_pos $startpos $endpos) }
 
 | typ=T_ident T_sym_lbrace fields=separated_list(T_sym_comma, record_field) T_sym_rbrace
-    { RecordExpr { record_type=typ; record_fields=fields; record_pos=make_src_pos $startpos $endpos } }
+    { (RecordExpr { record_type=typ; record_fields=fields }, make_src_pos $startpos $endpos) }
 
 | T_sym_lparen exprs=separated_list(T_sym_semicolon, expr) T_sym_rparen
-    { SeqExpr exprs }
+    { (SeqExpr exprs, make_src_pos $startpos $endpos) }
 
 | v=var T_sym_colon_eq e=expr
-    { AssignExpr { assign_lhs=v; assign_rhs=e; assign_pos=make_src_pos $startpos $endpos } }
+    { (AssignExpr { assign_lhs=v; assign_rhs=e }, make_src_pos $startpos $endpos) }
 
 | T_kw_if e1=expr T_kw_then e2=expr T_kw_else e3=expr
-    { IfExpr { if_test=e1; if_then=e2; if_else=Some e3; if_pos=make_src_pos $startpos $endpos } }
+    { (IfExpr { if_test=e1; if_then=e2; if_else=Some e3 }, make_src_pos $startpos $endpos) }
 
 | T_kw_if e1=expr T_kw_then e2=expr
-    { IfExpr { if_test=e1; if_then=e2; if_else=None; if_pos=make_src_pos $startpos $endpos } }
+    { (IfExpr { if_test=e1; if_then=e2; if_else=None }, make_src_pos $startpos $endpos) }
 
 | T_kw_while e1=expr T_kw_do e2=expr
-    { WhileExpr { while_test=e1; while_body=e2; while_pos=make_src_pos $startpos $endpos } }
+    { (WhileExpr { while_test=e1; while_body=e2 }, make_src_pos $startpos $endpos) }
 
 | T_kw_for var=T_ident T_sym_colon_eq lo=expr T_kw_to hi=expr T_kw_do body=expr
-    { ForExpr { for_var=var;
-                for_escape=ref true;
-                for_lo=lo; for_hi=hi;
-                for_body=body;
-                for_pos=make_src_pos $startpos $endpos }
+    { (ForExpr { for_var=var;
+                 for_escape=ref true;
+                 for_lo=lo; for_hi=hi;
+                 for_body=body },
+       make_src_pos $startpos $endpos)
     }
 
 | typ=T_ident T_sym_lbracket size=expr T_sym_rbracket T_kw_of init=expr
-    { ArrayExpr { array_type=typ; array_size=size; array_init=init; array_pos=make_src_pos $startpos $endpos } }
+    { (ArrayExpr { array_type=typ; array_size=size; array_init=init }, make_src_pos $startpos $endpos) }
 
 | T_kw_let decls=nonempty_list(decl) T_kw_in body=separated_list(T_sym_semicolon, expr) T_kw_end
-    { LetExpr { let_decls=decls; let_body=body; let_pos=make_src_pos $startpos $endpos } }
+    { (LetExpr { let_decls=decls; let_body=body }, make_src_pos $startpos $endpos) }
 
 (* Operators *)
-| T_sym_minus e=expr              { OpExpr { op_left=IntExpr 0; op_right=e; op_op=OpMinus; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_plus      e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpPlus  ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_minus     e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpMinus ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_times     e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpTimes ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_divide    e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpDivide; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_modulo    e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpDivide; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_eq        e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpEq    ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_neq       e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpNeq   ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_lt        e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpLt    ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_le        e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpLe    ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_gt        e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpGt    ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_ge        e2=expr { OpExpr { op_left=e1; op_right=e2; op_op=OpGe    ; op_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_pipe      e2=expr { IfExpr { if_test=e1; if_then=IntExpr 1; if_else=Some e2; if_pos=make_src_pos $startpos $endpos } }
-| e1=expr T_sym_ampersand e2=expr { IfExpr { if_test=e1; if_then=e2; if_else=Some (IntExpr 0); if_pos=make_src_pos $startpos $endpos } }
+| T_sym_minus e=expr
+    { let pos = make_src_pos $startpos $endpos in
+      (OpExpr { op_left=(IntExpr 0, pos); op_right=e; op_op=OpMinus }, pos) }
+| e1=expr T_sym_plus      e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpPlus   }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_minus     e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpMinus  }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_times     e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpTimes  }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_divide    e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpDivide }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_modulo    e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpDivide }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_eq        e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpEq     }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_neq       e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpNeq    }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_lt        e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpLt     }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_le        e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpLe     }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_gt        e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpGt     }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_ge        e2=expr { (OpExpr { op_left=e1; op_right=e2; op_op=OpGe     }, make_src_pos $startpos $endpos) }
+| e1=expr T_sym_pipe      e2=expr
+    { let pos = make_src_pos $startpos $endpos in
+      (IfExpr { if_test=e1; if_then=(IntExpr 1, pos); if_else=Some e2 }, pos) }
+| e1=expr T_sym_ampersand e2=expr
+    { let pos = make_src_pos $startpos $endpos in
+      (IfExpr { if_test=e1; if_then=e2; if_else=Some (IntExpr 0, pos) }, pos) }
 
 var:
 | id=T_ident rest=var_tail
