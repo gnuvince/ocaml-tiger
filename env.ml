@@ -7,7 +7,8 @@ let base_tenv =
 
 let base_venv =
   let func params result =
-    Enventry.FunEntry { fun_formals=params; fun_result=result }
+    Enventry.FunEntry { Enventry.fun_formals=params;
+                        Enventry.fun_result=result }
   in
   let open Symtable in
   let open Types in
