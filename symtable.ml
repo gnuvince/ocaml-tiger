@@ -16,3 +16,8 @@ let find sym t =
     Some (SymMap.find sym t)
   with Not_found ->
     None
+
+let print conv t =
+  SymMap.iter (fun k v ->
+    Printf.printf "%s: %s\n" (Sym.to_string k) (conv v))
+    t

@@ -24,14 +24,26 @@ and field_to_string (sym, typ) =
     (Sym.to_string sym)
     (to_string typ)
 
+let rec actual_type = function
+  | Int -> Int
+  | String -> String
+  | Nil -> Nil
+  | Unit -> Unit
+  | Record (fields, un) -> Record (List.map (fun (name, typ) -> (name, actual_type typ)) fields, un)
+  | Array (typ, un) -> Array (actual_type typ, un)
+  | Name (name, targ) ->
+     (match !targ with
+     | None -> failwith (Printf.sprintf "type '%s' is not initialized" (Sym.to_string name))
+     | Some typ -> Name (name, ref (Some (actual_type typ))))
+
 let rec check expected actual =
   match (expected, actual) with
   | (Int, Int)                           -> true
   | (String, String)                     -> true
   | (Nil, Nil)                           -> true
   | (Unit, Unit)                         -> true
-  | (Record (_, un1), Record (_, un2))   -> un1 == un2
-  | (Array (_, un1), Array (_, un2))     -> un1 == un2
+  | (Record (_, un1), Record (_, un2))   -> un1 == un2 (* Check fields? *)
+  | (Array (_, un1), Array (_, un2))     -> un1 == un2 (* Check element type? *)
   | (Name (_, targ), other)
   | (other, Name (_, targ)) ->
      begin
