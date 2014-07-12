@@ -123,7 +123,7 @@ and expr__to_string = function
   | CallExpr { call_func; call_args } ->
      sprintf "%s(%s)"
        (Sym.to_string call_func)
-       (String.concat ", " (List.map expr_to_string call_args))
+       (Utils.join ", " expr_to_string call_args)
 
   | OpExpr { op_left; op_right; op_op } ->
      sprintf "(%s %s %s)" (expr_to_string op_left) (op_to_string op_op) (expr_to_string op_right)
@@ -131,10 +131,14 @@ and expr__to_string = function
   | RecordExpr { record_type; record_fields } ->
      sprintf "%s{ %s }"
        (Sym.to_string record_type)
-       (String.concat ", " (List.map (fun (k, v, _) -> sprintf "%s=%s" (Sym.to_string k) (expr_to_string v)) record_fields))
+       (Utils.join
+          ", "
+          (fun (k, v, _) ->
+            sprintf "%s=%s" (Sym.to_string k) (expr_to_string v))
+          record_fields)
 
   | SeqExpr exprs ->
-     sprintf "(%s)" (String.concat "; " (List.map expr_to_string exprs))
+     sprintf "(%s)" (Utils.join "; " expr_to_string exprs)
 
   | AssignExpr { assign_lhs; assign_rhs } ->
      sprintf "%s := %s" (var_to_string assign_lhs) (expr_to_string assign_rhs)
@@ -162,8 +166,8 @@ and expr__to_string = function
 
   | LetExpr { let_decls; let_body } ->
      sprintf "let %s in %s end"
-       (String.concat " " (List.map let_decl_to_string let_decls))
-       (String.concat "; " (List.map expr_to_string let_body))
+       (Utils.join " " let_decl_to_string let_decls)
+       (Utils.join "; " expr_to_string let_body)
 
   | ArrayExpr { array_type; array_size; array_init } ->
      sprintf "%s [%s] of %s"
@@ -181,9 +185,9 @@ and let_decl_to_string = function
   | VarDecl var_decl ->
      var_decl_to_string var_decl
   | FunDecl fun_decls ->
-     String.concat " " (List.map fun_decl_to_string fun_decls)
+     Utils.join " " fun_decl_to_string fun_decls
   | TypeDecl type_decls ->
-     String.concat " " (List.map type_decl_to_string type_decls)
+     Utils.join " " type_decl_to_string type_decls
 
 and var_decl_to_string { var_name; var_type; var_expr; _ } =
   sprintf "var %s%s := %s"
@@ -196,7 +200,7 @@ and var_decl_to_string { var_name; var_type; var_expr; _ } =
 and fun_decl_to_string { fun_name; fun_params; fun_body; fun_type; fun_pos=_ } =
   sprintf "function %s(%s)%s = %s"
     (Sym.to_string fun_name)
-    (String.concat ", " (List.map field_to_string fun_params))
+    (Utils.join ", " field_to_string fun_params)
     (match fun_type with
     | Some t -> ": " ^ Sym.to_string t
     | None -> "")
@@ -214,7 +218,7 @@ and field_to_string { field_name; field_type; _ } =
 
 and type_to_string = function
   | NameType (name, _) -> Sym.to_string name
-  | RecordType fields -> sprintf "{ %s }" (String.concat ", " (List.map field_to_string fields))
+  | RecordType fields -> sprintf "{ %s }" (Utils.join ", " field_to_string fields)
   | ArrayType (base_type, _) -> sprintf "array of %s" (Sym.to_string base_type)
 
 and op_to_string = function

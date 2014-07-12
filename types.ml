@@ -16,7 +16,7 @@ let rec to_string = function
   | Unit -> "()"
   | Name (sym, _) -> Sym.to_string sym
   | Record (fields, _) ->
-     Printf.sprintf "{ %s }" (String.concat ", " (List.map field_to_string fields))
+     Printf.sprintf "{ %s }" (Utils.join ", " field_to_string fields)
   | Array (typ, _) -> "array of " ^ to_string typ
 
 and field_to_string (sym, typ) =
