@@ -1,3 +1,5 @@
+open Printf
+
 type unique = unit ref
 
 type t =
@@ -14,7 +16,13 @@ let rec to_string = function
   | String -> "string"
   | Nil -> "nil"
   | Unit -> "()"
-  | Name (sym, _) -> Sym.to_string sym
+  | Name (sym, targ) ->
+     Printf.sprintf "%s -> %s"
+       (Sym.to_string sym)
+       (match !targ with
+       | None -> "?"
+       | Some t -> to_string t
+       )
   | Record (fields, _) ->
      Printf.sprintf "{ %s }" (Utils.join ", " field_to_string fields)
   | Array (typ, _) -> "array of " ^ to_string typ
@@ -34,7 +42,7 @@ let rec actual_type = function
   | Name (name, targ) ->
      (match !targ with
      | None -> failwith (Printf.sprintf "type '%s' is not initialized" (Sym.to_string name))
-     | Some typ -> Name (name, ref (Some (actual_type typ))))
+     | Some typ -> actual_type typ)
 
 let rec check expected actual =
   match (expected, actual) with
