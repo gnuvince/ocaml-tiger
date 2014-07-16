@@ -16,30 +16,6 @@ let assert_type expected actual =
 
 
 
-(* Convert an Ast.typ to Types.t, using a given type symbol table. *)
-let rec ast_to_type tenv ast_type =
-  let find_type ast_type =
-    match Symtable.find ast_type tenv with
-    | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string ast_type))
-    | Some t -> t
-  in
-
-  match ast_type with
-  | Ast.NameType (sym, _) ->
-     find_type sym
-
-  | Ast.RecordType fields ->
-     let rec_field_list =
-       List.map
-         (fun { field_name; field_type; _ } -> (field_name, find_type field_type))
-         fields
-     in
-     Types.Record (rec_field_list, ref ())
-  | Ast.ArrayType (sym, _) ->
-     let ty = find_type sym in
-     Types.Array (ty, ref ())
-
-
 let rec trans_expr venv tenv (expr, pos) =
   match expr with
   | VarExpr v ->
@@ -112,41 +88,95 @@ and trans_var venv tenv var =
      )
 
 
-and trans_type tenv typ =
-  Types.Nil
+
+(* Convert an Ast.typ to Types.t, using a given type symbol table.
+ * - For Ast.NameType, we simply lookup the name in the symbol table.
+ * - For Ast.RecordType, we create a new Types.Record by looking up
+ *   the type of every field.
+ * - For Ast.ArrayType, we lookup the element type in the symbol table
+ *   and create a Types.Array.
+ *)
+and trans_type tenv ast_type =
+  let find_type ast_type =
+    match Symtable.find ast_type tenv with
+    | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string ast_type))
+    | Some t -> t
+  in
+
+  match ast_type with
+  | Ast.NameType (sym, _) ->
+     find_type sym
+
+  | Ast.RecordType fields ->
+     let rec_field_list =
+       List.map
+         (fun { field_name; field_type; _ } -> (field_name, find_type field_type))
+         fields
+     in
+     Types.Record (rec_field_list, ref ())
+
+  | Ast.ArrayType (sym, _) ->
+     let ty = find_type sym in
+     Types.Array (ty, ref ())
 
 
+(* Dispatch the translation of a variable, function or type declaration. *)
 and trans_decl venv tenv decl =
   match decl with
   | VarDecl var_rec   -> trans_var_decl venv tenv var_rec
   | FunDecl funs      -> trans_fun_decls venv tenv funs
   | TypeDecl types    -> trans_type_decls venv tenv types
 
+
 (* If a var declaration has no explicit type declaration, we give it
- * the type of its initialization expression.  If a type has an
- * explicit declaration, we check it against the inferred type of the
- * initialization expression.  If they match, we give the var the
+ * the type of its initialization expression.  If a variable has an
+ * explicit type declaration, we check it against the inferred type of
+ * the initialization expression.  If they match, we give the var the
  * specified type; if they don't, we throw an exception.  If the
  * specified type does not exist, we throw an exception.
+ *
+ * nil is treated specially: it can only be assigned to a record
+ * variable, and only if there is an explicit type declaration.
  *)
 and trans_var_decl venv tenv { var_name; var_type; var_expr; _ } =
-  let { typ=expr_typ; _ } = trans_expr venv tenv var_expr in
+  let { typ=expr_type; _ } = trans_expr venv tenv var_expr in
   let venv' =
-    match var_type with
-    | None -> Symtable.add var_name (Enventry.VarEntry expr_typ) venv
-    | Some ty_sym ->
-       begin
-         match Symtable.find ty_sym tenv with
-         | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string ty_sym))
-         | Some ty ->
-            assert_type ty expr_typ;
-            Symtable.add var_name (Enventry.VarEntry ty) venv
-       end
+    match (expr_type, var_type) with
+    | (Types.Nil, None) ->
+       failwith "can only assign nil to type-declared variables"
+
+    | (Types.Nil, Some type_sym) ->
+       (match check_nil tenv type_sym with
+       | None -> failwith "can only assign nil to record variables"
+       | Some typ -> Symtable.add var_name (Enventry.VarEntry typ) venv
+       )
+
+    | (_, None) ->
+       Symtable.add var_name (Enventry.VarEntry expr_type) venv
+
+    | (_, Some type_sym) ->
+       (match Symtable.find type_sym tenv with
+       | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string type_sym))
+       | Some typ ->
+          assert_type typ expr_type;
+          Symtable.add var_name (Enventry.VarEntry typ) venv)
   in
   (venv', tenv)
 
+
+and check_nil tenv type_sym =
+  match Symtable.find type_sym tenv with
+  | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string type_sym))
+  | Some t ->
+     begin
+       match Types.actual_type t with
+       | Types.Record _ as t -> Some t
+       | _ -> None
+     end
+
 and trans_fun_decls venv tenv decls =
   (venv, tenv)
+
 
 (* Type declarations are contained in a list, and within that list, these
  * types may be mutually recursive.  We start by adding all the type names
@@ -171,7 +201,7 @@ and trans_type_decls venv tenv decls =
     | Some (Types.Name (sym, ref_)) ->
        begin
          match !ref_ with
-         | None -> ref_ := Some (ast_to_type tenv' type_type)
+         | None -> ref_ := Some (trans_type tenv' type_type)
          | Some t -> failwith (sprintf "type %s already has a definition: %s"
                                  (Sym.to_string sym) (Types.to_string t))
        end
@@ -180,12 +210,21 @@ and trans_type_decls venv tenv decls =
   ) decls;
   (venv, tenv')
 
+
+(* Type check a function call.  The name of the function (which must be a symbol)
+ * is lookup in the symbol table; if it isn't bound or bound to a variable entry,
+ * an exception is raised.  If the name refers to a function, we type check the
+ * actual argument types to the expected argument types.  If they all match, the
+ * type of the result is returned, otherwise an exception is raised.
+ *)
 and check_call venv tenv { call_func; call_args } =
   match Symtable.find call_func venv with
   | None ->
      failwith (sprintf "function not found: %s" (Sym.to_string call_func))
+
   | Some (Enventry.VarEntry _) ->
      failwith (sprintf "not a function identifier: %s" (Sym.to_string call_func))
+
   | Some (Enventry.FunEntry { Enventry.fun_formals; Enventry.fun_result }) ->
      let arg_types = List.map (fun expr -> (trans_expr venv tenv expr).typ) call_args in
      List.iter2 (fun expected actual ->
@@ -197,23 +236,19 @@ and check_call venv tenv { call_func; call_args } =
      ) fun_formals arg_types;
      fun_result
 
+(* Type check a binary operation expression. In the case where the operator
+ * is +, -, *, /, or %, both operands must be of type int.  For comparison
+ * operators, the operands may be ints or strings: we check that both operands
+ * are of the same type.  The result of a binary operation expression is always
+ * an int.
+ *)
 and check_op venv tenv {typ=typ_left; _} {typ=typ_right; _} op_op =
   (match op_op with
-  | OpPlus
-  | OpMinus
-  | OpTimes
-  | OpDivide
-  | OpModulo ->
-     begin
-       assert_type Types.Int typ_left;
-       assert_type Types.Int typ_right;
-     end
-  | OpEq
-  | OpNeq
-  | OpLt
-  | OpLe
-  | OpGt
-  | OpGe ->
+  | OpPlus | OpMinus | OpTimes | OpDivide | OpModulo ->
+     assert_type Types.Int typ_left;
+     assert_type Types.Int typ_right;
+
+  | OpEq | OpNeq | OpLt | OpLe | OpGt | OpGe ->
      begin
        match typ_left with
        | Types.Int -> assert_type Types.Int typ_right
@@ -223,6 +258,13 @@ and check_op venv tenv {typ=typ_left; _} {typ=typ_right; _} op_op =
   );
   Types.Int
 
+
+(* Type check a record initialization expression.  If the name of the type
+ * is not bound or does not refer to a record type, we throw an exception.
+ * Otherwise, we make sure that the actual field types match the formal
+ * field types.  If they don't we throw an exception, otherwise we return
+ * the record type.
+ *)
 and check_record venv tenv { record_type; record_fields } =
   match Symtable.find record_type tenv with
   | None -> failwith (sprintf "type %s does not exist" (Sym.to_string record_type))
@@ -230,23 +272,30 @@ and check_record venv tenv { record_type; record_fields } =
      begin
        match Types.actual_type typ with
        | Types.Record (fields, un) as r ->
-          begin
-            let formals = List.map snd fields in
-            let actuals = record_expr_types venv tenv record_fields in
-            if List.for_all2 (fun form act -> Types.check form act) formals actuals then
-              r
-            else
-              failwith "some expressions are ill-typed"
-          end
+          let formals = List.map snd fields in
+          let actuals = record_expr_types venv tenv record_fields in
+          if List.for_all2 (fun form act -> Types.check form act) formals actuals then
+            r
+          else
+            failwith "some expressions are ill-typed"
        | _ -> failwith (sprintf "type %s is not a record type" (Types.to_string typ))
      end
 
+(* Extract the types of the field expressions of a record initialization.  *)
 and record_expr_types venv tenv fields =
   List.map (fun (_, expr, _) ->
     let { typ; _ } = trans_expr venv tenv expr in typ)
     fields
 
 
+(* Check an if-then or if-then-else expression.
+ * - if-then: make sure the condition is an int and the then branch
+ *   is a unit.
+ *
+ * - if-then-else: make sure the condition is an int and that the types
+ *   of the then and else branches are the same.  If they're not, throw
+ *   an exception.
+ *)
 and check_if venv tenv { if_test; if_then; if_else } =
   match if_else with
   | None ->
@@ -270,12 +319,18 @@ and check_if venv tenv { if_test; if_then; if_else } =
                      (Types.to_string typ_then) (Types.to_string typ_else))
      end
 
+(* Check a while expression; the loop test should be of type int and
+ * the body should have type unit.
+ *)
 and check_while venv tenv { while_test; while_body } =
   let { typ=test_type; _ } = trans_expr venv tenv while_test in
   let { typ=body_type; _ } = trans_expr venv tenv while_body in
   assert_type Types.Int test_type;
   assert_type Types.Unit body_type
 
+(* Check a for expression; the loop's lower and upper bounds should be
+ * ints and the body should have type unit.
+ *)
 and check_for venv tenv { for_var; for_lo; for_hi; for_body; _ } =
   let { typ=lo_type; _ } = trans_expr venv tenv for_lo in
   let { typ=hi_type; _ } = trans_expr venv tenv for_hi in
@@ -285,6 +340,10 @@ and check_for venv tenv { for_var; for_lo; for_hi; for_body; _ } =
   assert_type Types.Unit body_type
 
 
+(* Check a let expression: update the variable and type symbol
+ * tables with the new decalarations and then translate the
+ * body.
+ *)
 and check_let venv tenv { let_decls; let_body } =
   (* Process all the declarations to create updated versions of venv and tenv. *)
   let (new_venv, new_tenv) =
@@ -294,11 +353,7 @@ and check_let venv tenv { let_decls; let_body } =
       (venv, tenv)
       let_decls
   in
-  (* Process the body of the let expression. Return the type of the last expression. *)
-  List.fold_left
-    (fun _ expr -> trans_expr new_venv new_tenv expr)
-    { typ=Types.Unit; expr=() }
-    let_body
+  trans_expr new_venv new_tenv let_body
 
 and check_assign venv tenv { assign_lhs; assign_rhs } =
   let { typ=lhs_type; _ } = trans_var venv tenv assign_lhs in

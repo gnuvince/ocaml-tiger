@@ -143,7 +143,15 @@ expr:
        make_src_pos $startpos $endpos) }
 
 | T_kw_let decls=nonempty_list(decl) T_kw_in body=separated_list(T_sym_semicolon, expr) T_kw_end
-    { (LetExpr { let_decls=decls; let_body=body }, make_src_pos $startpos $endpos) }
+    { let pos = make_src_pos $startpos $endpos in
+      let actual_body =
+        match body with
+        | [] -> SeqExpr []
+        | [(expr, _)] -> expr
+        | exprs -> SeqExpr exprs
+      in
+      (LetExpr { let_decls=decls; let_body=(actual_body, pos) }, pos)
+    }
 
 (* Operators *)
 | T_sym_minus e=expr

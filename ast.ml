@@ -97,7 +97,7 @@ and for_expr = { for_var: Sym.t;
                  for_body: expr }
 
 and let_expr = { let_decls: decl list;
-                 let_body: expr list }
+                 let_body: expr }
 
 and array_expr = { array_type: Sym.t;
                    array_size: expr;
@@ -167,7 +167,7 @@ and expr__to_string = function
   | LetExpr { let_decls; let_body } ->
      sprintf "let %s in %s end"
        (Utils.join " " let_decl_to_string let_decls)
-       (Utils.join "; " expr_to_string let_body)
+       (expr_to_string let_body)
 
   | ArrayExpr { array_type; array_size; array_init } ->
      sprintf "%s [%s] of %s"
