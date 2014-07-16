@@ -97,28 +97,29 @@ and trans_var venv tenv var =
  *   and create a Types.Array.
  *)
 and trans_type tenv ast_type =
-  let find_type ast_type =
-    match Symtable.find ast_type tenv with
-    | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string ast_type))
-    | Some t -> t
-  in
-
   match ast_type with
   | Ast.NameType (sym, _) ->
-     find_type sym
+     find_type tenv sym
 
   | Ast.RecordType fields ->
      let rec_field_list =
        List.map
-         (fun { field_name; field_type; _ } -> (field_name, find_type field_type))
+         (fun { field_name; field_type; _ } -> (field_name, find_type tenv field_type))
          fields
      in
      Types.Record (rec_field_list, ref ())
 
   | Ast.ArrayType (sym, _) ->
-     let ty = find_type sym in
+     let ty = find_type tenv sym in
      Types.Array (ty, ref ())
 
+and find_type tenv ast_type =
+  match Symtable.find ast_type tenv with
+  | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string ast_type))
+  | Some t -> t
+
+and trans_field tenv { field_type; _ } =
+  find_type tenv field_type
 
 (* Dispatch the translation of a variable, function or type declaration. *)
 and trans_decl venv tenv decl =
@@ -175,7 +176,34 @@ and check_nil tenv type_sym =
      end
 
 and trans_fun_decls venv tenv decls =
-  (venv, tenv)
+  (* Add all the function definitions into a new variable symbol table
+   * so that the functions can be mutually recursive.
+   *)
+  let new_venv =
+    List.fold_left
+      (fun curr_venv { fun_name; fun_params; fun_type; _ } ->
+        let formal_types = List.map (trans_field tenv) fun_params in
+        let return_type =
+          match fun_type with
+          | None -> Types.Unit
+          | Some sym -> find_type tenv sym
+        in
+        Symtable.add
+          fun_name
+          (Enventry.FunEntry { fun_formals=formal_types; fun_result=return_type })
+          curr_venv
+      )
+      venv
+      decls
+  in
+  List.iter
+    (fun { fun_params; fun_body; _ } ->
+      let new_venv' = add_fields new_venv tenv fun_params in
+      ignore (trans_expr new_venv' tenv fun_body)
+    )
+    decls;
+  (new_venv, tenv)
+
 
 
 (* Type declarations are contained in a list, and within that list, these
@@ -377,3 +405,15 @@ and check_array_expr venv tenv { array_type; array_size; array_init } =
     { typ=arr_type; expr=() }
   | t ->
      failwith (sprintf "not an array type: %s" (Types.to_string t))
+
+and add_field venv tenv { field_name; field_type; _ } =
+  Symtable.add
+    field_name
+    (Enventry.VarEntry (find_type tenv field_type))
+    venv
+
+and add_fields venv tenv fields =
+  List.fold_left
+    (fun curr_venv field -> add_field curr_venv tenv field)
+    venv
+    fields
