@@ -7,6 +7,8 @@ type tenv = Types.t Symtable.t
 type expty = { expr: Translate.expr; typ: Types.t }
 
 
+(* UTILITY FUNCTIONS *)
+
 (* Ensure that a type is congruent to an expected type. *)
 let assert_type expected actual =
   if not (Types.check expected actual) then
@@ -15,6 +17,53 @@ let assert_type expected actual =
                 (Types.to_string actual))
 
 
+(* Look up a symbol in a given type environment. If the type
+ * is found, return it, otherwise raise an exception.
+ *)
+let find_type tenv type_sym =
+  match Symtable.find type_sym tenv with
+  | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string type_sym))
+  | Some t -> t
+
+
+(* Add a binding to venv from field_name to the actual type of field_type. *)
+let add_field venv tenv { field_name; field_type; _ } =
+  Symtable.add field_name (Enventry.VarEntry (find_type tenv field_type)) venv
+
+
+(* Add bindings to venv for all fields. *)
+let add_fields venv tenv fields =
+  List.fold_left (fun curr_venv field -> add_field curr_venv tenv field) venv fields
+
+
+(* Check whether a type symbol resolves to a type that can be assigned nil.
+ * If the type symbol is not bound an exception is raised; if the type does
+ * not resolve to a record, None is return; if the type is a record, Some typ
+ * is returned.
+ *)
+let check_nil tenv type_sym =
+  match Symtable.find type_sym tenv with
+  | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string type_sym))
+  | Some typ ->
+     begin
+       match Types.actual_type typ with
+       | Types.Record _ as r -> Some r
+       | _ -> None
+     end
+
+
+(* Given a type environment, return the return type of a function.
+ * If the fun_type is None (i.e. no declared return type), the return
+ * type is assumed to be Unit.  Otherwise, we lookup the type in the
+ * environment.
+ *)
+let fun_return_type tenv type_sym =
+  match type_sym with
+  | None -> Types.Unit
+  | Some sym -> find_type tenv sym
+
+
+(* MAIN TRANSLATION/TYPE CHECKING FUNCTIONS *)
 
 let rec trans_expr venv tenv (expr, pos) =
   match expr with
@@ -83,10 +132,10 @@ and trans_var venv tenv var =
   | SimpleVar (name, _) ->
      (match Symtable.find name venv with
      | Some (Enventry.VarEntry typ) -> { typ=typ; expr=() }
-     | Some (Enventry.FunEntry _) -> failwith "syntax error"
+     | Some (Enventry.FunEntry _) ->
+        failwith (sprintf "%s is a function, not a variable" (Sym.to_string name))
      | None -> failwith (sprintf "unbound variable: %s" (Sym.to_string name))
      )
-
 
 
 (* Convert an Ast.typ to Types.t, using a given type symbol table.
@@ -113,13 +162,6 @@ and trans_type tenv ast_type =
      let ty = find_type tenv sym in
      Types.Array (ty, ref ())
 
-and find_type tenv ast_type =
-  match Symtable.find ast_type tenv with
-  | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string ast_type))
-  | Some t -> t
-
-and trans_field tenv { field_type; _ } =
-  find_type tenv field_type
 
 (* Dispatch the translation of a variable, function or type declaration. *)
 and trans_decl venv tenv decl =
@@ -127,6 +169,10 @@ and trans_decl venv tenv decl =
   | VarDecl var_rec   -> trans_var_decl venv tenv var_rec
   | FunDecl funs      -> trans_fun_decls venv tenv funs
   | TypeDecl types    -> trans_type_decls venv tenv types
+
+
+and trans_field tenv { field_type; _ } =
+  find_type tenv field_type
 
 
 (* If a var declaration has no explicit type declaration, we give it
@@ -165,44 +211,32 @@ and trans_var_decl venv tenv { var_name; var_type; var_expr; _ } =
   (venv', tenv)
 
 
-and check_nil tenv type_sym =
-  match Symtable.find type_sym tenv with
-  | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string type_sym))
-  | Some t ->
-     begin
-       match Types.actual_type t with
-       | Types.Record _ as t -> Some t
-       | _ -> None
-     end
-
+(* The function declarations are kept in a list; those functions can be
+ * mutually recursive, so we start by updating venv with the functions,
+ * then we type check the bodies of every function.
+ *)
 and trans_fun_decls venv tenv decls =
-  (* Add all the function definitions into a new variable symbol table
-   * so that the functions can be mutually recursive.
-   *)
-  let new_venv =
-    List.fold_left
-      (fun curr_venv { fun_name; fun_params; fun_type; _ } ->
-        let formal_types = List.map (trans_field tenv) fun_params in
-        let return_type =
-          match fun_type with
-          | None -> Types.Unit
-          | Some sym -> find_type tenv sym
-        in
-        Symtable.add
-          fun_name
-          (Enventry.FunEntry { fun_formals=formal_types; fun_result=return_type })
-          curr_venv
-      )
+  let add_function venv { fun_name; fun_params; fun_type; _ } =
+    let formal_types = List.map (trans_field tenv) fun_params in
+    let return_type = fun_return_type tenv fun_type in
+
+    let open Enventry in
+    Symtable.add
+      fun_name
+      (FunEntry {fun_formals=formal_types; fun_result=return_type })
       venv
-      decls
   in
+
+  let venv_with_funs = List.fold_left add_function venv decls in
   List.iter
-    (fun { fun_params; fun_body; _ } ->
-      let new_venv' = add_fields new_venv tenv fun_params in
-      ignore (trans_expr new_venv' tenv fun_body)
+    (fun { fun_params; fun_type; fun_body; _ } ->
+      let new_venv' = add_fields venv_with_funs tenv fun_params in
+      let { typ=body_type; _ } = trans_expr new_venv' tenv fun_body in
+      let return_type = fun_return_type tenv fun_type in
+      assert_type body_type return_type
     )
     decls;
-  (new_venv, tenv)
+  (venv_with_funs, tenv)
 
 
 
@@ -327,25 +361,21 @@ and record_expr_types venv tenv fields =
 and check_if venv tenv { if_test; if_then; if_else } =
   match if_else with
   | None ->
-     begin
-       let { typ=typ_test; _ } = trans_expr venv tenv if_test in
-       let { typ=typ_then; _ } = trans_expr venv tenv if_then in
-       assert_type Types.Int typ_test;
-       assert_type Types.Unit typ_then;
-       Types.Unit
-     end
+     let { typ=type_test; _ } = trans_expr venv tenv if_test in
+     let { typ=type_then; _ } = trans_expr venv tenv if_then in
+     assert_type Types.Int type_test;
+     assert_type Types.Unit type_then;
+     Types.Unit
   | Some else_expr ->
-     begin
-       let { typ=typ_test; _ } = trans_expr venv tenv if_test in
-       let { typ=typ_then; _ } = trans_expr venv tenv if_then in
-       let { typ=typ_else; _ } = trans_expr venv tenv else_expr in
-       assert_type Types.Int typ_test;
-       if Types.check typ_then typ_else then
-         typ_then
-       else
-         failwith (sprintf "then and else clause have different types: %s and %s"
-                     (Types.to_string typ_then) (Types.to_string typ_else))
-     end
+     let { typ=type_test; _ } = trans_expr venv tenv if_test in
+     let { typ=type_then; _ } = trans_expr venv tenv if_then in
+     let { typ=type_else; _ } = trans_expr venv tenv else_expr in
+     assert_type Types.Int type_test;
+     if Types.check type_then type_else then
+       type_then
+     else
+       failwith (sprintf "then and else clause have different types: %s and %s"
+                   (Types.to_string type_then) (Types.to_string type_else))
 
 (* Check a while expression; the loop test should be of type int and
  * the body should have type unit.
@@ -405,15 +435,3 @@ and check_array_expr venv tenv { array_type; array_size; array_init } =
     { typ=arr_type; expr=() }
   | t ->
      failwith (sprintf "not an array type: %s" (Types.to_string t))
-
-and add_field venv tenv { field_name; field_type; _ } =
-  Symtable.add
-    field_name
-    (Enventry.VarEntry (find_type tenv field_type))
-    venv
-
-and add_fields venv tenv fields =
-  List.fold_left
-    (fun curr_venv field -> add_field curr_venv tenv field)
-    venv
-    fields
