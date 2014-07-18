@@ -63,6 +63,8 @@ let fun_return_type tenv type_sym =
   | Some sym -> find_type tenv sym
 
 
+
+
 (* MAIN TRANSLATION/TYPE CHECKING FUNCTIONS *)
 
 let rec trans_expr venv tenv (expr, pos) =
@@ -170,11 +172,6 @@ and trans_decl venv tenv decl =
   | FunDecl funs      -> trans_fun_decls venv tenv funs
   | TypeDecl types    -> trans_type_decls venv tenv types
 
-
-and trans_field tenv { field_type; _ } =
-  find_type tenv field_type
-
-
 (* If a var declaration has no explicit type declaration, we give it
  * the type of its initialization expression.  If a variable has an
  * explicit type declaration, we check it against the inferred type of
@@ -216,8 +213,9 @@ and trans_var_decl venv tenv { var_name; var_type; var_expr; _ } =
  * then we type check the bodies of every function.
  *)
 and trans_fun_decls venv tenv decls =
+  let find_field_type { field_type; _ } = find_type tenv field_type in
   let add_function venv { fun_name; fun_params; fun_type; _ } =
-    let formal_types = List.map (trans_field tenv) fun_params in
+    let formal_types = List.map find_field_type fun_params in
     let return_type = fun_return_type tenv fun_type in
 
     let open Enventry in
