@@ -7,4 +7,3 @@ val trans_expr : venv -> tenv -> Ast.expr -> expty
 val trans_var  : venv -> tenv -> Ast.var  -> expty
 val trans_decl : venv -> tenv -> Ast.decl -> (venv * tenv)
 val trans_type :         tenv -> Ast.typ  -> Types.t
-val check_call : venv -> tenv -> Ast.call_expr -> Types.t
