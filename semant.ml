@@ -23,7 +23,7 @@ let assert_type expected actual =
 let find_type tenv type_sym =
   match Symtable.find type_sym tenv with
   | None -> failwith (sprintf "type is not in scope: %s" (Sym.to_string type_sym))
-  | Some t -> t
+  | Some t -> Types.actual_type t
 
 
 (* Add a binding to venv from field_name to the actual type of field_type. *)
@@ -42,14 +42,10 @@ let add_fields venv tenv fields =
  * is returned.
  *)
 let check_nil tenv type_sym =
-  match Symtable.find type_sym tenv with
-  | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string type_sym))
-  | Some typ ->
-     begin
-       match Types.actual_type typ with
-       | Types.Record _ as r -> Some r
-       | _ -> None
-     end
+  let typ = find_type tenv type_sym in
+  match typ with
+  | Types.Record _ as r -> Some r
+  | _ -> None
 
 
 (* Given a type environment, return the return type of a function.
@@ -199,11 +195,9 @@ and trans_var_decl venv tenv { var_name; var_type; var_expr; _ } =
        Symtable.add var_name (Enventry.VarEntry expr_type) venv
 
     | (_, Some type_sym) ->
-       (match Symtable.find type_sym tenv with
-       | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string type_sym))
-       | Some typ ->
-          assert_type typ expr_type;
-          Symtable.add var_name (Enventry.VarEntry typ) venv)
+       let typ = find_type tenv type_sym in
+       assert_type typ expr_type;
+       Symtable.add var_name (Enventry.VarEntry typ) venv
   in
   (venv', tenv)
 
@@ -313,7 +307,7 @@ and check_op venv tenv {typ=typ_left; _} {typ=typ_right; _} op_op =
        match typ_left with
        | Types.Int -> assert_type Types.Int typ_right
        | Types.String -> assert_type Types.String typ_right
-       | _ -> failwith "binary operations only work on ints and strings"
+       | _ -> failwith "comparison operations only work on ints and strings"
      end
   );
   Types.Int
@@ -326,20 +320,16 @@ and check_op venv tenv {typ=typ_left; _} {typ=typ_right; _} op_op =
  * the record type.
  *)
 and check_record venv tenv { record_type; record_fields } =
-  match Symtable.find record_type tenv with
-  | None -> failwith (sprintf "type %s does not exist" (Sym.to_string record_type))
-  | Some typ ->
-     begin
-       match Types.actual_type typ with
-       | Types.Record (fields, un) as r ->
-          let formals = List.map snd fields in
-          let actuals = record_expr_types venv tenv record_fields in
-          if List.for_all2 (fun form act -> Types.check form act) formals actuals then
-            r
-          else
-            failwith "some expressions are ill-typed"
-       | _ -> failwith (sprintf "type %s is not a record type" (Types.to_string typ))
-     end
+  let typ = find_type tenv record_type in
+  match typ with
+  | Types.Record (fields, un) as r ->
+     let formals = List.map snd fields in
+     let actuals = record_expr_types venv tenv record_fields in
+     if List.for_all2 (fun form act -> Types.check form act) formals actuals then
+       r
+     else
+       failwith "some expressions are ill-typed"
+  | _ -> failwith (sprintf "type %s is not a record type" (Types.to_string typ))
 
 (* Extract the types of the field expressions of a record initialization.  *)
 and record_expr_types venv tenv fields =
@@ -411,25 +401,25 @@ and check_let venv tenv { let_decls; let_body } =
   in
   trans_expr new_venv new_tenv let_body
 
+(* Translate the lhs and rhs of an assignment and ensure that the
+ * types are congruent.
+ *)
 and check_assign venv tenv { assign_lhs; assign_rhs } =
   let { typ=lhs_type; _ } = trans_var venv tenv assign_lhs in
   let { typ=rhs_type; _ } = trans_expr venv tenv assign_rhs in
   assert_type lhs_type rhs_type;
   { typ=Types.Unit; expr=() }
 
-and check_array_expr venv tenv { array_type; array_size; array_init } =
-  let arr_type =
-    match Symtable.find array_type tenv with
-    | None -> failwith (sprintf "type not in scope: %s" (Sym.to_string array_type))
-    | Some ty -> ty
-  in
+(* Type check an array initialization expression: the array_size must resolve
+ * to an integer, the array type must resolve to an array of T's and the
+ * type of the initializing expression must be T.
+ *)
+and check_array_expr venv tenv { array_type=type_sym; array_size; array_init } =
+  let arr_type = find_type tenv type_sym in
   let { typ=size_type; _ } = trans_expr venv tenv array_size in
   let { typ=init_type; _ } = trans_expr venv tenv array_init in
 
   assert_type Types.Int size_type;
-  match Types.actual_type arr_type with
-  | Types.Array (act_typ, _) ->
-     assert_type act_typ init_type;
-    { typ=arr_type; expr=() }
-  | t ->
-     failwith (sprintf "not an array type: %s" (Types.to_string t))
+  match arr_type with
+  | Types.Array (act_typ, _) -> assert_type act_typ init_type; { typ=arr_type; expr=() }
+  | t -> failwith (sprintf "not an array type: %s" (Types.to_string t))
