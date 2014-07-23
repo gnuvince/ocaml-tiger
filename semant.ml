@@ -128,12 +128,32 @@ let rec trans_expr venv tenv (expr, pos) =
 and trans_var venv tenv var =
   match var with
   | SimpleVar (name, _) ->
-     (match Symtable.find name venv with
-     | Some (Enventry.VarEntry typ) -> { typ=typ; expr=() }
-     | Some (Enventry.FunEntry _) ->
-        failwith (sprintf "%s is a function, not a variable" (Sym.to_string name))
-     | None -> failwith (sprintf "unbound variable: %s" (Sym.to_string name))
-     )
+     begin
+       match Symtable.find name venv with
+       | Some (Enventry.VarEntry typ) -> { typ=typ; expr=() }
+       | Some (Enventry.FunEntry _) ->
+          failwith (sprintf "%s is a function, not a variable" (Sym.to_string name))
+       | None -> failwith (sprintf "unbound variable: %s" (Sym.to_string name))
+     end
+  | FieldVar (var, field, _) ->
+     let { typ; expr=_ } = trans_var venv tenv var in
+     begin
+       match typ with
+       | Types.Record (fields, _) ->
+          let (_, field_type) = List.find (fun (f, ty) -> Sym.to_string f = Sym.to_string field) fields in
+          { typ=field_type; expr=() }
+       | _ -> failwith "var is not a record"
+     end
+  | SubscriptVar (var, index, _) ->
+     let { typ=var_type; expr=_ } = trans_var venv tenv var in
+     let { typ=idx_type; expr=_ } = trans_expr venv tenv index in
+     begin
+       match var_type with
+       | Types.Array (elem_type, _) ->
+          assert_type Types.Int idx_type;
+          { typ=elem_type; expr=() }
+       | _ -> failwith "var is not an array"
+     end
 
 
 (* Convert an Ast.typ to Types.t, using a given type symbol table.
@@ -274,7 +294,7 @@ and trans_type_decls venv tenv decls =
 and check_call venv tenv { call_func; call_args } =
   match Symtable.find call_func venv with
   | None ->
-     failwith (sprintf "function not found: %s" (Sym.to_string call_func))
+     failwith (sprintf "symbol not bound: %s" (Sym.to_string call_func))
 
   | Some (Enventry.VarEntry _) ->
      failwith (sprintf "not a function identifier: %s" (Sym.to_string call_func))
