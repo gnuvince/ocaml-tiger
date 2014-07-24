@@ -107,8 +107,6 @@ expr:
 | func=T_ident T_sym_lparen args=separated_list(T_sym_comma, expr) T_sym_rparen
     { (CallExpr { call_func=Sym.from_string func; call_args=args }, make_src_pos $startpos $endpos) }
 
-| T_kw_break
-    { (BreakExpr, make_src_pos $startpos $endpos) }
 
 | typ=T_ident T_sym_lbrace fields=separated_list(T_sym_comma, record_field) T_sym_rbrace
     { (RecordExpr { record_type=Sym.from_string typ; record_fields=fields }, make_src_pos $startpos $endpos) }
@@ -125,10 +123,10 @@ expr:
 | T_kw_if e1=expr T_kw_then e2=expr
     { (IfExpr { if_test=e1; if_then=e2; if_else=None }, make_src_pos $startpos $endpos) }
 
-| T_kw_while e1=expr T_kw_do e2=expr
+| T_kw_while e1=expr T_kw_do e2=loop_expr
     { (WhileExpr { while_test=e1; while_body=e2 }, make_src_pos $startpos $endpos) }
 
-| T_kw_for var=T_ident T_sym_colon_eq lo=expr T_kw_to hi=expr T_kw_do body=expr
+| T_kw_for var=T_ident T_sym_colon_eq lo=expr T_kw_to hi=expr T_kw_do body=loop_expr
     { (ForExpr { for_var=Sym.from_string var;
                  for_escape=ref true;
                  for_lo=lo; for_hi=hi;
@@ -246,3 +244,7 @@ field:
         field_type=Sym.from_string typ;
         field_escape=ref true;
         field_pos=make_src_pos $startpos $endpos } }
+
+loop_expr:
+| e=expr { e }
+| T_kw_break { (BreakExpr, make_src_pos $startpos $endpos) }
