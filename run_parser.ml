@@ -2,6 +2,7 @@ open Ast
 
 let display_ast lexbuf =
   let ast = Parser.program Lexer.lex_tiger lexbuf in
+  Weeder.assert_break ast;
   print_endline (expr_to_string ast)
 
 let () =
